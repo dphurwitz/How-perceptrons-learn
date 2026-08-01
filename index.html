@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>How a machine learns to sort things</title>
+<style>
+  :root{
+    --page:#0b1020; --card:#0f1524; --panel:#161f33; --grid:#2b3a5c; --axis:#3c4d70;
+    --ink:#f4f7ff; --dim:#c2cce4; --yellow:#facc15; --cyan:#22d3ee; --violet:#b39bff;
+    --ok:#34d399; --wrong:#fb7185; --fence:#f1f4fb; --line:#33436a;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html{background:#0b1020}
+  html,body{margin:0;background:#0b1020 !important;color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .sub{color:#d3dbf0 !important}
+  .wrap{max-width:780px;margin:0 auto;padding:38px 18px 80px;background:#0b1020;min-height:100vh}
+  .eyebrow{letter-spacing:.18em;font-size:12px;font-weight:800;color:var(--violet);text-transform:uppercase}
+  h1{font-size:clamp(27px,6vw,40px);line-height:1.12;margin:.3em 0 .2em;font-weight:850}
+  .sub{color:var(--dim);font-size:17px;max-width:60ch}
+  h2{font-size:22px;font-weight:820;margin:2.3em 0 .5em}
+  .num{color:var(--violet);margin-right:.45em}
+  p{margin:.7em 0;font-size:16.5px}
+  strong{color:#fff;font-weight:700}
+  .yh{color:var(--yellow);font-weight:700}.ch{color:var(--cyan);font-weight:700}.vh{color:var(--violet);font-weight:700}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#141c30;border:1px solid var(--grid);border-radius:6px;padding:1px 6px;font-size:14.5px;color:#dce6ff}
+  hr{border:none;border-top:1px solid var(--line);margin:26px 0}
+  .card{background:var(--card);border:1px solid var(--grid);border-radius:16px;padding:12px;margin:18px 0}
+  svg.plot{display:block;max-width:440px;margin:0 auto;width:100%}
+  .ctrl{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+  button{font-family:inherit;font-size:14.5px;font-weight:700;border-radius:11px;cursor:pointer;padding:12px 16px;border:1px solid var(--grid);background:transparent;color:var(--ink);transition:transform .07s,background .15s,opacity .15s}
+  button:active{transform:translateY(1px)}
+  button.go{border:none;color:#180f2e;background:var(--violet)}
+  button:disabled{opacity:.4;cursor:default}
+  .say{background:var(--panel);border:1px solid var(--grid);border-radius:13px;padding:14px 16px;margin-top:12px;font-size:15px}
+  .say.ok{background:#0f2a20;border-color:#1f7a52}
+  .tag{font-size:11.5px;letter-spacing:.09em;font-weight:800;color:var(--dim);text-transform:uppercase;margin-bottom:6px}
+  .tag.ok{color:#5fe0a6}
+  .title{font-size:18px;font-weight:800;margin-bottom:8px}
+  .math{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14.5px;background:var(--card);border:1px solid var(--grid);border-radius:10px;padding:12px 14px;margin-top:10px;line-height:1.85}
+  .box{background:var(--panel);border:1px solid var(--grid);border-radius:13px;padding:12px 14px;margin-top:10px}
+  .dots{display:flex;gap:6px;justify-content:center;margin-top:12px}
+  .dots i{width:9px;height:9px;border-radius:99px;background:#26314f;display:inline-block}
+  input[type=range]{width:100%;accent-color:var(--violet);height:28px}
+  .slabel{display:flex;justify-content:space-between;font-size:13px;color:var(--dim);font-family:ui-monospace,monospace}
+  .verdict{font-weight:800;font-size:17px;text-align:center;margin-top:12px;padding:12px;border-radius:12px}
+  table{width:100%;border-collapse:collapse;font-family:ui-monospace,monospace;font-size:13.5px}
+  th{color:var(--dim);text-align:left;padding:4px 6px;font-weight:700}
+  td{padding:6px 6px;border-top:1px solid var(--line)}
+  .foot{color:var(--dim);font-size:14px;margin-top:14px}
+  .row{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:8px;margin-top:3px;font-family:ui-monospace,monospace;font-size:14}
+  .chip{font-family:ui-monospace,monospace;font-size:13;padding:5px 9px;border-radius:8px;border:1px solid var(--grid);color:var(--dim)}
+  .chip.cur{border-color:var(--violet);color:var(--ink);background:rgba(167,139,250,.14)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">A visual walkthrough</div>
+  <h1>How a machine learns to sort things</h1>
+  <p class="sub">From one straight fence to XOR — built entirely from ideas you can watch move. Every section has a picture you can play with.</p>
+  <hr/>
+  <p style="font-size:17px">Underneath all of this sits one small idea. A machine sorts things into two groups by <strong>drawing a boundary</strong>, and classifies anything new by checking <strong>which side of the boundary it falls on</strong>. Everything below is just different boundaries.</p>
+
+  <h2><span class="num">1.</span>One straight fence</h2>
+  <p>Picture each thing you want to sort as a <strong>point on a grid</strong> — one of the little circles — placed by its measurements. A single unit, a perceptron, draws one straight fence. Everything on one side it calls <span class="yh">yellow</span>; the other side, <span class="ch">cyan</span>.</p>
+  <p>The fence has a <span class="vh">violet arrow</span> that shows which way it faces, and the fence always sits crosswise (at a right angle) to that arrow. What controls the arrow is <strong>two numbers</strong> — one for X, one for Y — called the <strong>weights</strong> (written <code>w</code>). Changing the weights re-aims the arrow, and the fence swings to match: <strong>weights → aim the arrow → place the fence</strong>. You never move the fence by hand. <strong>The fence is aimed right once every yellow point sits on the side the arrow faces</strong>, with every cyan point on the other side.</p>
+  <p>To check one point, the machine asks: <strong>is this point on the side the arrow points to?</strong> A point's two bracket numbers are its <strong>X</strong> (first) and <strong>Y</strong> (second). It compares the arrow and the point in X, and in Y, sees whether they go the same way or opposite ways, and tallies it into one number — <strong>a plus means "yes, arrow's side," a minus means "no, the other side."</strong> (When the arrow points straight up/down this is just "check the Y number.")</p>
+  <p>The machine <strong>learns by fixing mistakes</strong>. When a point is on the wrong side, the rule is simple: <strong>take the old weights and add the wrong point's two numbers</strong> to get the new weights — swinging the arrow toward a yellow point (or subtract, to swing away from a cyan one). Nothing is multiplied; you just add or subtract the point. <span style="color:var(--dim)">(Shorthand: <code>w_new = w_old + y·x</code>, where "y·x" only means "the point, flipped to a minus if it's cyan.")</span> Each tap first <strong>plans</strong> the point to fix and checks it; the next tap <strong>nudges</strong> the arrow so you watch it swing.</p>
+
+  <div class="card" id="pcp">
+    <div id="pcp-plot"></div>
+    <div id="pcp-net"></div>
+    <div id="pcp-ctrl"></div>
+    <div id="pcp-say"></div>
+    <div id="pcp-list"></div>
+    <div id="pcp-trail"></div>
+  </div>
+
+  <h2><span class="num">2.</span>When one fence isn't enough</h2>
+  <p>One fence only gives you "this side vs. that side." But suppose the group you want sits <strong>in the middle</strong>, with the other group both above and below it. No single straight line can carve out a middle — wherever you place it, the outer group lands on both sides. The fix: use <strong>two fences</strong> and keep what's <strong>between them</strong>. Here it is doing real work.</p>
+
+  <h2><span class="num">3.</span>A real example: body temperature</h2>
+  <p>Now the up–down axis is a real measurement: <strong>body temperature</strong>. Too cold is bad; too hot is bad; healthy is the band between. A single rule like "higher = sicker" would be wrong, because both extremes are bad. You need two fences — a low and a high threshold — and "healthy if between them."</p>
+  <p><strong>This is how you classify something new.</strong> Drag the slider to set a patient's temperature and watch the verdict. Nothing is re-learned — the fences are already placed; you just check which side the new reading falls on.</p>
+
+  <div class="card">
+    <div id="tmp-plot"></div>
+    <div style="max-width:420px;margin:8px auto 0">
+      <div class="slabel"><span>34° cold</span><span>New patient</span><span>40° fever</span></div>
+      <input type="range" id="tmp-range" min="34" max="40" step="0.1" value="37.0"/>
+    </div>
+    <div class="verdict" id="tmp-verdict"></div>
+  </div>
+
+  <h2><span class="num">4.</span>XOR is the lane, tilted 45°</h2>
+  <p>XOR is a famous pattern one fence can't solve. Its four cases sit in <strong>opposite corners</strong>: <span class="yh">yellow</span> top-left and bottom-right, <span class="ch">cyan</span> top-right and bottom-left. Any single line ends up with one of each colour on each side. But the two yellow points <strong>line up along a diagonal</strong> — so it's the same lane trick, tilted 45°.</p>
+
+  <div class="card">
+    <div id="xor-plot"></div>
+    <div class="ctrl">
+      <button id="xor-back">‹ Back</button>
+      <button class="go" id="xor-next">Next ›</button>
+    </div>
+    <div class="say" id="xor-say"></div>
+    <div class="dots" id="xor-dots"></div>
+  </div>
+
+  <h2><span class="num">5.</span>Building a layered perceptron</h2>
+  <p>To fence off a middle band you need two fences and a way to combine them. Here's exactly how three little perceptrons do it: two of them (a <strong>hidden layer</strong>) each draw one fence and answer yes/no, and a third (the <strong>output</strong>) combines their answers. Each fence is its own perceptron — same idea as section 1; the new part is the combine.</p>
+  <p class="foot">Note: below, the two fences are placed by hand so we can focus on the combine. A real network would <em>learn</em> all three at once, using the same nudging you saw in section 1, with the output's mistakes passed back to steer each fence (that's "backpropagation").</p>
+
+  <div class="card" id="lay">
+    <div id="lay-plot"></div>
+    <div id="lay-net"></div>
+    <div id="lay-say"></div>
+    <div id="lay-table"></div>
+    <div class="dots" id="lay-dots"></div>
+    <div class="ctrl">
+      <button id="lay-back">‹ Back</button>
+      <button class="go" id="lay-next">Next ›</button>
+    </div>
+  </div>
+
+  <h2><span class="num">6.</span>How this scales to the real world</h2>
+  <p>Real problems add more <strong>features</strong> and more <strong>fences</strong>. With hundreds of measurements the "grid" becomes a space too big to picture, and the network draws many fences that combine into complicated boundaries. But the machinery is exactly what you watched: a thing becomes a <strong>point</strong> from its measurements → neurons draw <strong>fences</strong> → a later layer <strong>combines</strong> them into a shape a single line couldn't make → a new thing is <strong>classified</strong> by which region it lands in.</p>
+</div>
+
+<script>
+(function(){
+  var Y="#facc15",CY="#22d3ee",V="#a78bfa",FEN="#f1f4fb",GRID="#233150",AXIS="#3c4d70",
+      WRONG="#fb7185",OK="#34d399",HALO="#0b1020",INK="#eef2fb",DIM="#9aa8c7";
+  var SZ=440,PAD=22,R=6;
+  function T(mx,my){return [PAD+((mx+R)/(2*R))*(SZ-2*PAD), PAD+((R-my)/(2*R))*(SZ-2*PAD)];}
+  function dt(a,b){return a[0]*b[0]+a[1]*b[1];}
+  function halo(x,y,s,w,fill,txt,anchor){anchor=anchor||"middle";
+    return '<text x="'+x+'" y="'+y+'" font-size="'+s+'" font-weight="'+w+'" fill="'+fill+'" text-anchor="'+anchor+'" stroke="'+HALO+'" stroke-width="3.4" stroke-linejoin="round" style="paint-order:stroke">'+txt+'</text>';}
+  function grid(){var s='';for(var i=-R;i<=R;i++){var v0=T(i,-R),v1=T(i,R),h0=T(-R,i),h1=T(R,i),ax=(i===0);
+    s+='<line x1="'+v0[0]+'" y1="'+v0[1]+'" x2="'+v1[0]+'" y2="'+v1[1]+'" stroke="'+(ax?AXIS:GRID)+'" stroke-width="'+(ax?1.5:1)+'"/>';
+    s+='<line x1="'+h0[0]+'" y1="'+h0[1]+'" x2="'+h1[0]+'" y2="'+h1[1]+'" stroke="'+(ax?AXIS:GRID)+'" stroke-width="'+(ax?1.5:1)+'"/>';}return s;}
+  function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+
+  /* ============ 1. PERCEPTRON ============ */
+  var PP=[{x:[3,1],y:1},{x:[-3,-1],y:-1},{x:[-1,3],y:1},{x:[1,-3],y:-1},{x:[3,-1],y:1},{x:[-3,1],y:-1}];
+  var W0=[-3,-2];
+  function firstMistake(w){for(var i=0;i<PP.length;i++){if((dt(w,PP[i].x)>0?1:-1)!==PP[i].y)return i;}return -1;}
+  var STEPS=(function(){var st=[],w=W0.slice(),g=0;while(g++<200){var i=firstMistake(w);if(i<0)break;var p=PP[i],a=[w[0]+p.y*p.x[0],w[1]+p.y*p.x[1]];st.push({i:i,pt:p.x,y:p.y,before:w.slice(),after:a});w=a;}return st;})();
+  var N=STEPS.length, MAXBEAT=2*N-1;
+  var pcp={beat:0,playing:false,disp:STEPS[0].before.slice(),anim:null,logicalW:STEPS[0].before,step:STEPS[0],solved:false};
+
+  function pcpCompute(){
+    var k=Math.floor(pcp.beat/2), planning=(pcp.beat%2===0), step=STEPS[k];
+    pcp.k=k; pcp.planning=planning; pcp.step=step;
+    pcp.logicalW=planning?step.before:step.after;
+    var wc=0;PP.forEach(function(p){if((dt(step.after,p.x)>0?1:-1)!==p.y)wc++;});
+    pcp.solved=(!planning)&&wc===0;
+  }
+  function pcpPlot(w){
+    var a=w[0],b=w[1],len=Math.hypot(a,b)||1,nx=a/len,ny=b/len,dx=-ny,dy=nx,BIG=60;
+    function pol(sg){return [[dx*BIG,dy*BIG],[-dx*BIG,-dy*BIG],[-dx*BIG+sg*nx*BIG,-dy*BIG+sg*ny*BIG],[dx*BIG+sg*nx*BIG,dy*BIG+sg*ny*BIG]].map(function(p){var q=T(p[0],p[1]);return q[0]+','+q[1];}).join(' ');}
+    var o=T(0,0),tip=T(a,b),f0=T(dx*BIG,dy*BIG),f1=T(-dx*BIG,-dy*BIG);
+    var lw=pcp.logicalW, step=pcp.step, solved=pcp.solved;
+    var s='<svg viewBox="0 0 '+SZ+' '+SZ+'" class="plot">';
+    s+='<defs><clipPath id="pc"><rect x="'+PAD+'" y="'+PAD+'" width="'+(SZ-2*PAD)+'" height="'+(SZ-2*PAD)+'" rx="9"/></clipPath>';
+    s+='<marker id="pah" markerWidth="10" markerHeight="10" refX="7" refY="3.2" orient="auto"><path d="M0,0 L8,3.2 L0,6.4 Z" fill="'+V+'"/></marker></defs>';
+    s+='<g clip-path="url(#pc)"><polygon points="'+pol(1)+'" fill="'+Y+'" opacity="0.10"/><polygon points="'+pol(-1)+'" fill="'+CY+'" opacity="0.10"/>'+grid();
+    s+='<line x1="'+f0[0]+'" y1="'+f0[1]+'" x2="'+f1[0]+'" y2="'+f1[1]+'" stroke="'+FEN+'" stroke-width="2.3" opacity="0.9"/></g>';
+    var pl=T(clamp(nx*3.9,-5,5),clamp(ny*3.9,-5,5)),nl=T(clamp(-nx*3.9,-5,5),clamp(-ny*3.9,-5,5));
+    s+=halo(pl[0],pl[1],13,800,Y,"YELLOW")+halo(nl[0],nl[1],13,800,CY,"CYAN");
+    for(var i=0;i<PP.length;i++){var p=PP[i],q=T(p.x[0],p.x[1]),wrong=((dt(lw,p.x)>0?1:-1)!==p.y),trig=(step.i===i&&!solved);
+      if(wrong)s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="12" fill="none" stroke="'+WRONG+'" stroke-width="2.1"/>';
+      if(trig)s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="16" fill="none" stroke="'+V+'" stroke-width="2.4" opacity="0.9"/>';
+      s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="8" fill="'+(p.y===1?Y:CY)+'" stroke="'+HALO+'" stroke-width="1.5"/>';
+      s+=halo(q[0]+14,q[1]+5,11,800,DIM,"#"+(i+1),"start");}
+    s+='<line x1="'+o[0]+'" y1="'+o[1]+'" x2="'+tip[0]+'" y2="'+tip[1]+'" stroke="'+V+'" stroke-width="3.4" marker-end="url(#pah)"/>';
+    s+='<circle cx="'+o[0]+'" cy="'+o[1]+'" r="3.5" fill="'+V+'"/></svg>';
+    document.getElementById('pcp-plot').innerHTML=s;
+  }
+  function pcpNet(){
+    var step=pcp.step,w=pcp.logicalW,n=step.i+1,pt=step.pt;
+    var Wd=300,Hd=150,X=[54,40],Yy=[54,104],O=[232,72];
+    var mX=[(X[0]+O[0])/2,(X[1]+O[1])/2-8],mY=[(Yy[0]+O[0])/2,(Yy[1]+O[1])/2+14];
+    function inN(p,val,sub){return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="19" fill="#1b2540" stroke="'+V+'" stroke-width="2"/>'+
+      '<text x="'+p[0]+'" y="'+(p[1]+5)+'" text-anchor="middle" font-family="monospace" font-size="14" font-weight="800" fill="'+Y+'">'+val+'</text>'+
+      '<text x="'+p[0]+'" y="'+(p[1]+33)+'" text-anchor="middle" font-size="9.5" fill="'+DIM+'">'+sub+'</text>';}
+    var s='<div class="box"><div class="tag">Inside this one perceptron</div>';
+    s+='<svg viewBox="0 0 '+Wd+' '+Hd+'" style="max-width:320px;display:block;margin:0 auto;width:100%">';
+    s+='<line x1="'+X[0]+'" y1="'+X[1]+'" x2="'+O[0]+'" y2="'+O[1]+'" stroke="'+V+'" stroke-width="2" opacity="0.9"/>';
+    s+='<line x1="'+Yy[0]+'" y1="'+Yy[1]+'" x2="'+O[0]+'" y2="'+O[1]+'" stroke="'+V+'" stroke-width="2" opacity="0.9"/>';
+    s+='<text x="'+mX[0]+'" y="'+mX[1]+'" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="'+V+'">weight '+w[0]+'</text>';
+    s+='<text x="'+mY[0]+'" y="'+mY[1]+'" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="'+V+'">weight '+w[1]+'</text>';
+    s+=inN(X,pt[0],"point #"+n+" · X")+inN(Yy,pt[1],"point #"+n+" · Y");
+    s+='<circle cx="'+O[0]+'" cy="'+O[1]+'" r="20" fill="#221a3a" stroke="'+V+'" stroke-width="2"/>';
+    s+='<text x="'+O[0]+'" y="'+(O[1]+4)+'" text-anchor="middle" font-family="monospace" font-size="12" font-weight="700" fill="'+INK+'">check</text>';
+    s+='<text x="'+O[0]+'" y="'+(O[1]+36)+'" text-anchor="middle" font-size="9.5" fill="'+DIM+'">perceptron</text></svg>';
+    s+='<div style="font-size:12.5px;color:'+DIM+';text-align:center;margin-top:4px;line-height:1.5">Right now point #'+n+"'s numbers ("+pt.join(", ")+') are in the inputs. Each wire multiplies by its <span style="color:'+V+'">weight</span>; the perceptron adds them and reads the sign. The inputs stay on this point until it\'s on the correct side, then move to the next wrong point.</div></div>';
+    document.getElementById('pcp-net').innerHTML=s;
+  }
+  function pcpStatic(){
+    var step=pcp.step,k=pcp.k,planning=pcp.planning,solved=pcp.solved;
+    var prevI=k>0?STEPS[k-1].i:null, same=(prevI===step.i), dotVal=dt(step.before,step.pt), afterCorrect=((dt(step.after,step.pt)>0?1:-1)===step.y);
+    var wc=0;PP.forEach(function(p){if((dt(pcp.logicalW,p.x)>0?1:-1)!==p.y)wc++;});
+    // controls
+    var c='<div class="ctrl">';
+    c+='<button onclick="pcpBack()" '+(pcp.beat===0?'disabled':'')+'>‹ Back</button>';
+    c+='<button class="go" onclick="pcpNext()" '+(pcp.beat>=MAXBEAT?'disabled':'')+'>'+(planning?'Nudge ›':'Next ›')+'</button>';
+    c+='<button onclick="pcpPlay()">'+(pcp.playing?'❚❚ Pause':'▶ Play')+'</button>';
+    c+='<button onclick="pcpReset()">Reset</button></div>';
+    document.getElementById('pcp-ctrl').innerHTML=c;
+    // say
+    var say='';
+    if(solved){
+      say='<div class="say ok"><div class="tag ok">Done</div>Every yellow point is now on the side the arrow points to, and every cyan point on the other side. Nothing is wrong, so the arrow is aimed right and it stops.</div>';
+    } else if(planning){
+      var lead;
+      if(k===0)lead='The arrow starts aimed wrong, so '+wc+' points are on the wrong side. Scanning top to bottom, the first wrong one is <span class="vh">#'+(step.i+1)+'</span> ('+step.pt.join(", ")+'). Let\'s check it.';
+      else if(same)lead='Point <span class="vh">#'+(step.i+1)+'</span> still isn\'t across the fence — still the first wrong one, so we\'ll nudge it <strong>again</strong>.';
+      else lead='Point <span class="vh">#'+(prevI+1)+'</span> is now correct, so scanning down, the next wrong one is <span class="vh">#'+(step.i+1)+'</span> ('+step.pt.join(", ")+').';
+      var sx=(step.before[0]>=0)===(step.pt[0]>=0)?"same way":"opposite", sy=(step.before[1]>=0)===(step.pt[1]>=0)?"same way":"opposite";
+      say='<div class="say"><div class="tag">Step '+(k+1)+' of '+N+' · plan</div>'+lead+
+        '<div class="math"><div style="color:'+INK+';font-weight:700;margin-bottom:6px">Is point #'+(step.i+1)+' on the side the arrow points to?</div>'+
+        '<span style="color:'+DIM+'">Check it against the arrow in the picture, ['+step.before.join(", ")+']. A point\'s numbers are [X, Y]:</span><br>'+
+        '• X: arrow '+step.before[0]+', point '+step.pt[0]+' → '+sx+' → '+(step.before[0]*step.pt[0])+'<br>'+
+        '• Y: arrow '+step.before[1]+', point '+step.pt[1]+' → '+sy+' → '+(step.before[1]*step.pt[1])+'<br>'+
+        'add them: '+(step.before[0]*step.pt[0])+' + ('+(step.before[1]*step.pt[1])+') = <span style="color:'+(dotVal>0?OK:WRONG)+';font-weight:800">'+dotVal+'</span> → '+(dotVal>0?'a plus = arrow\u2019s side':'a minus = the other side')+'<br>'+
+        '<div style="margin-top:6px">Point #'+(step.i+1)+' is <span style="color:'+(step.y===1?Y:CY)+';font-weight:800">'+(step.y===1?'yellow':'cyan')+'</span>, so it should be on the '+(step.y===1?'arrow\u2019s side':'other side')+' — but it isn\'t. <span class="vh">Tap Nudge</span> to '+(step.y===1?'add':'subtract')+' it and watch the arrow swing.</div></div></div>';
+    } else {
+      say='<div class="say"><div class="tag">Step '+(k+1)+' of '+N+' · nudge</div>'+
+        'We '+(step.y===1?'added':'subtracted')+' point <span class="vh">#'+(step.i+1)+'</span>, and the arrow swung — you can see it move above.'+
+        '<div class="math"><span style="color:'+DIM+'">New weights = old weights '+(step.y===1?'plus':'minus')+' the point (this re-aims the arrow):</span><br>'+
+        '['+step.before.join(", ")+'] '+(step.y===1?'+':'−')+' ['+step.pt.join(", ")+'] = <span style="color:'+V+';font-weight:800">['+step.after.join(", ")+']</span> <span style="color:'+DIM+';font-size:12.5px">(shorthand: w = w '+(step.y===1?'+':'−')+' x)</span><br>'+
+        '<span style="margin-top:6px;display:inline-block">'+(afterCorrect?'<span style="color:'+OK+';font-weight:700">Now point #'+(step.i+1)+' is on the correct side. ✓</span>':'<span style="color:'+DIM+'">Point #'+(step.i+1)+' is still on the wrong side — it\u2019ll come up again.</span>')+'</span></div>'+
+        (k<N-1?'<span style="color:'+DIM+';font-size:13.5px">Tap Next to plan the following point.</span>':'')+'</div>';
+    }
+    document.getElementById('pcp-say').innerHTML=say;
+    // list
+    var status=PP.map(function(p){return (dt(pcp.logicalW,p.x)>0?1:-1)===p.y;});
+    var li='<div class="box"><div class="tag">The list · checked top to bottom</div>';
+    for(var i=0;i<PP.length;i++){var p=PP[i],fix=(step.i===i&&!solved),ok=status[i];
+      li+='<div class="row" style="'+(fix?'background:rgba(167,139,250,.16);outline:1px solid '+V:'')+'">'+
+        '<span style="color:'+DIM+';width:22px">#'+(i+1)+'</span>'+
+        '<span style="width:11px;height:11px;border-radius:99px;background:'+(p.y===1?Y:CY)+';flex:0 0 auto"></span>'+
+        '<span style="color:'+INK+';flex:1">('+p.x[0]+', '+p.x[1]+')</span>'+
+        '<span style="color:'+(p.y===1?Y:CY)+';font-size:12px">'+(p.y===1?'yellow':'cyan')+'</span>'+
+        '<span style="color:'+(ok?OK:WRONG)+';font-weight:800;width:18px;text-align:center">'+(ok?'✓':'✕')+'</span></div>';}
+    li+='</div>';
+    document.getElementById('pcp-list').innerHTML=li;
+    // trail
+    var used=planning?k:k+1, tr='';
+    if(used>0){tr='<div style="margin-top:10px;font-size:13.5px;color:'+DIM+'"><div class="tag">Order used so far</div><div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:2px">';
+      for(var j=0;j<used;j++){tr+='<span class="chip'+(j===used-1?' cur':'')+'">#'+(STEPS[j].i+1)+' ('+STEPS[j].pt.join(", ")+')</span>';}
+      tr+='</div></div>';}
+    document.getElementById('pcp-trail').innerHTML=tr;
+    pcpNet();
+  }
+  function pcpAnimTo(target){if(pcp.anim)cancelAnimationFrame(pcp.anim);
+    var from=pcp.disp.slice(),t0=performance.now();
+    function tick(now){var t=Math.min(1,(now-t0)/500),e=t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+      pcp.disp=[from[0]+(target[0]-from[0])*e,from[1]+(target[1]-from[1])*e];pcpPlot(pcp.disp);
+      if(t<1)pcp.anim=requestAnimationFrame(tick);}
+    pcp.anim=requestAnimationFrame(tick);}
+  function pcpRender(){pcpCompute();pcpStatic();pcpAnimTo(pcp.logicalW);}
+  window.pcpNext=function(){pcpStop();if(pcp.beat<MAXBEAT){pcp.beat++;pcpRender();}};
+  window.pcpBack=function(){pcpStop();if(pcp.beat>0){pcp.beat--;pcpRender();}};
+  window.pcpReset=function(){pcpStop();pcp.beat=0;pcpRender();};
+  function pcpStop(){if(pcp.play){clearInterval(pcp.play);pcp.play=null;pcp.playing=false;}}
+  window.pcpPlay=function(){
+    if(pcp.playing){pcpStop();pcpStatic();return;}
+    if(pcp.beat>=MAXBEAT){pcp.beat=0;}
+    pcp.playing=true;pcpRender();
+    pcp.play=setInterval(function(){if(pcp.beat>=MAXBEAT){pcpStop();pcpStatic();return;}pcp.beat++;pcpRender();},1300);
+  };
+  pcpCompute();pcpStatic();pcpPlot(pcp.disp);
+
+  /* ============ 3. TEMPERATURE ============ */
+  var tMin=34,tMax=40,LOW=36,HIGH=38;
+  function Yt(t){return 30+((tMax-t)/(tMax-tMin))*380;}
+  function Xf(f){return 55+f*(SZ-110);}
+  var PATS=[[0.13,35.0],[0.30,36.7],[0.44,37.1],[0.60,37.6],[0.78,38.9],[0.92,39.5]];
+  function tmpDraw(newT){
+    var yLow=Yt(LOW),yHigh=Yt(HIGH),top=Yt(tMax),bot=Yt(tMin);
+    var s='<svg viewBox="0 0 '+SZ+' '+SZ+'" class="plot"><defs><clipPath id="tc"><rect x="30" y="24" width="'+(SZ-60)+'" height="'+(SZ-48)+'" rx="9"/></clipPath></defs><g clip-path="url(#tc)">';
+    s+='<rect x="30" y="'+yHigh+'" width="'+(SZ-60)+'" height="'+(yLow-yHigh)+'" fill="'+Y+'" opacity="0.15"/>';
+    s+='<rect x="30" y="24" width="'+(SZ-60)+'" height="'+(yHigh-24)+'" fill="'+CY+'" opacity="0.13"/>';
+    s+='<rect x="30" y="'+yLow+'" width="'+(SZ-60)+'" height="'+((SZ-24)-yLow)+'" fill="'+CY+'" opacity="0.13"/>';
+    for(var t=tMin;t<=tMax;t++){var y=Yt(t);s+='<line x1="30" y1="'+y+'" x2="'+(SZ-30)+'" y2="'+y+'" stroke="'+GRID+'" stroke-width="1"/>'+halo(40,y+4,11,700,DIM,t+"°","start");}
+    s+='<line x1="30" y1="'+yLow+'" x2="'+(SZ-30)+'" y2="'+yLow+'" stroke="'+FEN+'" stroke-width="2.4"/>';
+    s+='<line x1="30" y1="'+yHigh+'" x2="'+(SZ-30)+'" y2="'+yHigh+'" stroke="'+FEN+'" stroke-width="2.4"/></g>';
+    s+=halo(SZ-38,yHigh-8,11.5,700,FEN,"high 38°","end")+halo(SZ-38,yLow+16,11.5,700,FEN,"low 36°","end");
+    s+=halo(Xf(0.5),Yt(37)+4,12.5,800,Y,"HEALTHY BAND")+halo(Xf(0.5),Yt(39.3),12,800,CY,"FEVER")+halo(Xf(0.5),Yt(34.7),12,800,CY,"TOO COLD");
+    for(var i=0;i<PATS.length;i++){var f=PATS[i][0],tv=PATS[i][1],x=Xf(f),y=Yt(tv),h=(tv>LOW&&tv<HIGH);
+      s+='<circle cx="'+x+'" cy="'+y+'" r="11" fill="none" stroke="'+OK+'" stroke-width="1.6" opacity="0.6"/>';
+      s+='<circle cx="'+x+'" cy="'+y+'" r="7" fill="'+(h?Y:CY)+'" stroke="'+HALO+'" stroke-width="1.5"/>';}
+    var nx=Xf(0.5),ny=Yt(newT),nh=(newT>LOW&&newT<HIGH);
+    s+='<line x1="'+nx+'" y1="24" x2="'+nx+'" y2="'+(SZ-24)+'" stroke="'+V+'" stroke-width="1" stroke-dasharray="3 4" opacity="0.5"/>';
+    s+='<circle cx="'+nx+'" cy="'+ny+'" r="15" fill="none" stroke="'+V+'" stroke-width="2.6"/>';
+    s+='<circle cx="'+nx+'" cy="'+ny+'" r="8.5" fill="'+(nh?Y:CY)+'" stroke="'+HALO+'" stroke-width="1.6"/>'+halo(nx,ny-22,12.5,800,V,newT.toFixed(1)+"°")+'</svg>';
+    document.getElementById('tmp-plot').innerHTML=s;
+    var v=document.getElementById('tmp-verdict');
+    if(nh){v.style.background="rgba(52,211,153,.15)";v.style.color=OK;v.textContent="Healthy — inside the safe band (36–38°C).";}
+    else if(newT<=LOW){v.style.background="rgba(34,211,238,.14)";v.style.color=CY;v.textContent="Sick — too cold (below the low fence).";}
+    else{v.style.background="rgba(251,113,133,.14)";v.style.color=WRONG;v.textContent="Sick — fever (above the high fence).";}
+  }
+  document.getElementById('tmp-range').addEventListener('input',function(){tmpDraw(parseFloat(this.value));});
+  tmpDraw(37.0);
+
+  /* ============ 4. XOR ============ */
+  var XP=[{x:[-3,3],y:1},{x:[3,-3],y:1},{x:[3,3],y:-1},{x:[-3,-3],y:-1}];
+  function inLane(mx,my){return (mx+my)<4&&(mx+my)>-4;}
+  var A1=[42,-38],A2=[-38,42],B1=[38,-42],B2=[-42,38],BAND=[A2,A1,B1,B2];
+  var XT=[{tag:"The XOR pattern",body:"Yellow sits in opposite corners: (−3, 3) and (3, −3). Cyan sits in the other opposite corners: (3, 3) and (−3, −3). Same colour = diagonally across."},
+    {tag:"Why one line fails",body:"The dashed line is one attempt. It groups yellow (−3, 3) with cyan (−3, −3) on the left, and yellow (3, −3) with cyan (3, 3) on the right — one of each colour on each side. Every straight line does this."},
+    {tag:"The same lane, tilted",body:"The two yellow points line up along a diagonal. So we reuse the lane trick, tilted 45°: two diagonal fences, one on each side of the yellow diagonal."},
+    {tag:"Combine",body:"A point is yellow if it sits inside the diagonal strip between the two lines; otherwise cyan. Both yellow points are inside; both cyan points are stranded in the corners. XOR solved."}];
+  var xor={step:0};
+  function pp(arr){return arr.map(function(p){var q=T(p[0],p[1]);return q[0]+','+q[1];}).join(' ');}
+  function xorDraw(){
+    var st=xor.step,showEx=(st===1),showF=(st>=2),showFill=(st>=3);
+    var s='<svg viewBox="0 0 '+SZ+' '+SZ+'" class="plot"><defs><clipPath id="xc"><rect x="'+PAD+'" y="'+PAD+'" width="'+(SZ-2*PAD)+'" height="'+(SZ-2*PAD)+'" rx="9"/></clipPath></defs><g clip-path="url(#xc)">';
+    if(showFill){s+='<rect x="'+PAD+'" y="'+PAD+'" width="'+(SZ-2*PAD)+'" height="'+(SZ-2*PAD)+'" fill="'+CY+'" opacity="0.13"/><polygon points="'+pp(BAND)+'" fill="'+Y+'" opacity="0.17"/>';}
+    s+=grid();
+    if(showEx){var e0=T(0,R),e1=T(0,-R);s+='<line x1="'+e0[0]+'" y1="'+e0[1]+'" x2="'+e1[0]+'" y2="'+e1[1]+'" stroke="'+WRONG+'" stroke-width="2" stroke-dasharray="6 6" opacity="0.85"/>';}
+    if(showF){var fa0=T(A2[0],A2[1]),fa1=T(A1[0],A1[1]),fb0=T(B2[0],B2[1]),fb1=T(B1[0],B1[1]);
+      s+='<line x1="'+fa0[0]+'" y1="'+fa0[1]+'" x2="'+fa1[0]+'" y2="'+fa1[1]+'" stroke="'+FEN+'" stroke-width="2.5"/>';
+      s+='<line x1="'+fb0[0]+'" y1="'+fb0[1]+'" x2="'+fb1[0]+'" y2="'+fb1[1]+'" stroke="'+FEN+'" stroke-width="2.5"/>';}
+    s+='</g>';
+    if(showEx){var lp=T(0,5.4);s+=halo(lp[0],lp[1],12,700,WRONG,"one attempt (fails)");}
+    if(showFill){s+=halo(T(1.4,-0.6)[0],T(1.4,-0.6)[1],13,800,Y,"YELLOW LANE")+halo(T(4.6,3.6)[0],T(4.6,3.6)[1],12.5,800,CY,"CYAN")+halo(T(-4.6,-3.6)[0],T(-4.6,-3.6)[1],12.5,800,CY,"CYAN");}
+    for(var i=0;i<XP.length;i++){var p=XP[i],q=T(p.x[0],p.x[1]),wrong=(showFill&&((inLane(p.x[0],p.x[1])?1:-1)!==p.y)),lx=q[0]+(p.x[0]>=0?14:-14);
+      if(showFill&&!wrong)s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="12" fill="none" stroke="'+OK+'" stroke-width="1.8" opacity="0.75"/>';
+      s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="8" fill="'+(p.y===1?Y:CY)+'" stroke="'+HALO+'" stroke-width="1.5"/>';
+      s+=halo(lx,q[1]+4,11.5,700,(p.y===1?Y:CY),"("+p.x[0]+", "+p.x[1]+")",(p.x[0]>=0?"start":"end"));}
+    s+='</svg>';
+    document.getElementById('xor-plot').innerHTML=s;
+    var d=XT[st];
+    document.getElementById('xor-say').innerHTML='<div class="tag">Step '+(st+1)+' / 4 · '+d.tag+'</div>'+d.body+(showFill?'<div class="math" style="color:'+OK+';font-weight:800">0 points wrong — solved.</div>':'');
+    var dd='';for(var j=0;j<4;j++)dd+='<i style="background:'+(j<=st?Y:'#26314f')+'"></i>';
+    document.getElementById('xor-dots').innerHTML=dd;
+    document.getElementById('xor-back').disabled=(st===0);
+    document.getElementById('xor-next').textContent=(st>=3?'↺ Start over':'Next ›');
+  }
+  document.getElementById('xor-next').onclick=function(){xor.step=(xor.step>=3?0:xor.step+1);xorDraw();};
+  document.getElementById('xor-back').onclick=function(){xor.step=Math.max(0,xor.step-1);xorDraw();};
+  xorDraw();
+
+  /* ============ 5. LAYERED TWO FENCES ============ */
+  var TOP=1.5,BOT=-1.5;
+  var LPTS=[{n:1,x:[-2,0],y:1},{n:2,x:[2,0],y:1},{n:3,x:[0,3],y:-1},{n:4,x:[0,-3],y:-1}];
+  function belowTop(my){return my<TOP;} function aboveBot(my){return my>BOT;}
+  var LT=[{tag:"The problem",title:"Yellow is trapped in the middle",body:"Two yellow points sit in the middle (#1, #2). Two cyan points sit above and below (#3, #4). One straight fence can't separate them — cyan is on both sides, so any single line splits one colour apart."},
+    {tag:"The stack",title:"Use two perceptrons, then combine",body:"We stack three little perceptrons. Two (a “hidden layer”) each draw one fence and answer yes/no; a third (the “output”) combines their answers. Each fence is its own perceptron — the new part is the combine."},
+    {tag:"Perceptron A",title:"Top fence — is the point below it?",body:"The first hidden perceptron draws the top fence and asks each point: is it below this line? Only #3, up high, answers no."},
+    {tag:"Perceptron B",title:"Bottom fence — is the point above it?",body:"The second hidden perceptron draws the bottom fence and asks: is the point above this line? Only #4, down low, answers no."},
+    {tag:"Combine · output",title:"Yellow = yes from A AND yes from B",body:"The output says yellow only when BOTH answered yes — below the top fence and above the bottom one, in the lane. #3 fails A, #4 fails B, so both are cyan. #1 and #2 pass both → yellow. All four correct."}];
+  var lay={step:0};
+  function layDraw(){
+    var st=lay.step,showA=(st>=2),showB=(st>=3),showFill=(st>=4);
+    var yTop=T(0,TOP)[1],yBot=T(0,BOT)[1],left=T(-R,0)[0],right=T(R,0)[0],top=T(0,R)[1],bottom=T(0,-R)[1];
+    var s='<svg viewBox="0 0 '+SZ+' '+SZ+'" class="plot"><defs><clipPath id="lc"><rect x="'+PAD+'" y="'+PAD+'" width="'+(SZ-2*PAD)+'" height="'+(SZ-2*PAD)+'" rx="9"/></clipPath></defs><g clip-path="url(#lc)">';
+    if(showFill){s+='<rect x="'+left+'" y="'+yTop+'" width="'+(right-left)+'" height="'+(yBot-yTop)+'" fill="'+Y+'" opacity="0.15"/>';
+      s+='<rect x="'+left+'" y="'+top+'" width="'+(right-left)+'" height="'+(yTop-top)+'" fill="'+CY+'" opacity="0.13"/>';
+      s+='<rect x="'+left+'" y="'+yBot+'" width="'+(right-left)+'" height="'+(bottom-yBot)+'" fill="'+CY+'" opacity="0.13"/>';}
+    s+=grid();
+    if(showA)s+='<line x1="'+left+'" y1="'+yTop+'" x2="'+right+'" y2="'+yTop+'" stroke="'+FEN+'" stroke-width="2.6"/>';
+    if(showB)s+='<line x1="'+left+'" y1="'+yBot+'" x2="'+right+'" y2="'+yBot+'" stroke="'+FEN+'" stroke-width="2.6"/>';
+    s+='</g>';
+    if(showA&&!showFill)s+=halo(T(3.6,TOP)[0],yTop-8,12,700,FEN,"top fence (A)");
+    if(showB&&!showFill)s+=halo(T(3.4,BOT)[0],yBot+18,12,700,FEN,"bottom fence (B)");
+    if(showFill){s+=halo(T(-3.6,0)[0],T(-3.6,0)[1]+4,13,800,Y,"YELLOW LANE")+halo(T(3.6,4.4)[0],T(3.6,4.4)[1],12.5,800,CY,"CYAN")+halo(T(3.6,-4.4)[0],T(3.6,-4.4)[1],12.5,800,CY,"CYAN");}
+    for(var i=0;i<LPTS.length;i++){var p=LPTS[i],q=T(p.x[0],p.x[1]),wrong=(showFill&&((belowTop(p.x[1])&&aboveBot(p.x[1]))?1:-1)!==p.y);
+      if(showFill&&!wrong)s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="12" fill="none" stroke="'+OK+'" stroke-width="1.8" opacity="0.75"/>';
+      s+='<circle cx="'+q[0]+'" cy="'+q[1]+'" r="8.5" fill="'+(p.y===1?Y:CY)+'" stroke="'+HALO+'" stroke-width="1.6"/>'+halo(q[0]+14,q[1]+5,11.5,800,DIM,"#"+p.n,"start");}
+    s+='</svg>';
+    document.getElementById('lay-plot').innerHTML=s;
+    // network
+    var on=V,off="#2b3757",X=[40,45],Yy=[40,105],A=[160,45],B=[160,105],O=[275,75],Aon=(st>=2),Bon=(st>=3),Oon=(st>=4);
+    function ed(p,q,a){return '<line x1="'+p[0]+'" y1="'+p[1]+'" x2="'+q[0]+'" y2="'+q[1]+'" stroke="'+(a?on:off)+'" stroke-width="'+(a?2:1.2)+'" opacity="'+(a?0.9:0.5)+'"/>';}
+    function nd(p,r,stroke,fill,label,sub){return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+r+'" fill="'+fill+'" stroke="'+stroke+'" stroke-width="2"/><text x="'+p[0]+'" y="'+(p[1]+4)+'" text-anchor="middle" font-family="monospace" font-size="12" font-weight="700" fill="'+INK+'">'+label+'</text><text x="'+p[0]+'" y="'+(p[1]+r+13)+'" text-anchor="middle" font-size="9.5" fill="'+DIM+'">'+sub+'</text>';}
+    var net='<div class="box"><div class="tag">The three perceptrons</div><svg viewBox="0 0 320 150" style="max-width:340px;display:block;margin:0 auto;width:100%">';
+    net+=ed(X,A,Aon)+ed(Yy,A,Aon)+ed(X,B,Bon)+ed(Yy,B,Bon)+ed(A,O,Oon)+ed(B,O,Oon);
+    net+=nd(X,16,"#3a4a68","#1b2540","X","point's X")+nd(Yy,16,"#3a4a68","#1b2540","Y","point's Y");
+    net+=nd(A,17,Aon?on:off,Aon?"#221a3a":"#141c30","A","top fence")+nd(B,17,Bon?on:off,Bon?"#221a3a":"#141c30","B","bottom fence")+nd(O,18,Oon?OK:off,Oon?"#0f2a20":"#141c30","and","output");
+    net+='</svg><div style="font-size:12.5px;color:'+DIM+';text-align:center;margin-top:2px;line-height:1.5">One point at a time, its X and Y go into the inputs. Both fences (A, B) each give a yes/no, and the output combines them with AND.</div></div>';
+    document.getElementById('lay-net').innerHTML=net;
+    // say
+    var d=LT[st];
+    document.getElementById('lay-say').innerHTML='<div class="say'+(st>=4?' ok':'')+'"><div class="tag'+(st>=4?' ok':'')+'">Step '+(st+1)+' of 5 · '+d.tag+'</div><div class="title">'+d.title+'</div><p style="margin:0;font-size:15.5px;line-height:1.6">'+d.body+'</p></div>';
+    // table
+    var tb='<div class="box"><div class="tag">What each perceptron answers</div><table><thead><tr><th>pt</th><th>A: below top?</th><th>B: above bottom?</th><th>yellow? (A and B)</th></tr></thead><tbody>';
+    for(var i=0;i<LPTS.length;i++){var p=LPTS[i],a=belowTop(p.x[1]),b=aboveBot(p.x[1]),res=a&&b;
+      function yn(v,onf){return onf?'<span style="color:'+(v?OK:WRONG)+';font-weight:700">'+(v?'yes':'no')+'</span>':'<span style="color:'+DIM+'">—</span>';}
+      tb+='<tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:99px;background:'+(p.y===1?Y:CY)+';margin-right:6px"></span>#'+p.n+'</td><td>'+yn(a,showA)+'</td><td>'+yn(b,showB)+'</td><td>'+(showFill?'<span style="color:'+(res?Y:CY)+';font-weight:800">'+(res?'YELLOW':'cyan')+'</span>':'<span style="color:'+DIM+'">—</span>')+'</td></tr>';}
+    tb+='</tbody></table></div>';
+    document.getElementById('lay-table').innerHTML=tb;
+    var dd='';for(var j=0;j<5;j++)dd+='<i style="background:'+(j<=st?V:'#26314f')+'"></i>';
+    document.getElementById('lay-dots').innerHTML=dd;
+    document.getElementById('lay-back').disabled=(st===0);
+    document.getElementById('lay-next').textContent=(st>=4?'↺ Start over':'Next ›');
+  }
+  document.getElementById('lay-next').onclick=function(){lay.step=(lay.step>=4?0:lay.step+1);layDraw();};
+  document.getElementById('lay-back').onclick=function(){lay.step=Math.max(0,lay.step-1);layDraw();};
+  layDraw();
+})();
+</script>
+</body>
+</html>
